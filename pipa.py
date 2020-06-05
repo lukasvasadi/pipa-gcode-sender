@@ -1,8 +1,9 @@
 import csv
 import sys
-from PyQt5.QtGui import *
-from PyQt5.QtCore import *
+# from PyQt5.QtGui import *
+# from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
+# from PyQt5 import QtCore, QtGui, QtWidgets
 import serial
 from serial.tools import list_ports
 import platform
@@ -12,10 +13,36 @@ import qtmodern.styles
 import qtmodern.windows
 
 
+def transmit_data(motherboard):
+    fieldnames = ['time', 'sen1Ch1', 'sen1Ch2', 'sen1Ch3', 'sen1Ch4', 'sen1Ch5',
+                  'sen2Ch1', 'sen2Ch2', 'sen2Ch3', 'sen2Ch4', 'sen2Ch5', 'cnt1', 'cnt2']
+    with open('data.csv', 'w', newline='') as csv_file:
+        csv_writer = csv.writer(csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        csv_writer.writerow(fieldnames)
+
+    while True:
+        with open('data.csv', 'a', newline='') as csv_file:
+            # csv_writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            csv_writer = csv.writer(csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            time_start = time.time()
+            transmission = motherboard.readline()[0:-2].decode('utf-8')
+            print(transmission)
+            data = transmission.split(',')
+            # csv_writer.writerow([data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
+            #                      data[8], data[9], data[10], data[11]])
+            # print(time.time() - time_start)
+            # time.sleep(1)
+
+            if not transmission:
+                print("Finished")
+                break
+
+
 class Window(QMainWindow):
     """
     GUI for passing g-code commands to liquid handler.
     """
+
     def __init__(self):
         super(Window, self).__init__()
         QApplication.setStyle(QStyleFactory.create('Plastique'))
@@ -56,6 +83,8 @@ class Window(QMainWindow):
         self.progress = QProgressBar()
         self.step_index = 0
 
+        self.instructions = {"command": [], "type": [], "time": []}
+
         # Execute main window
         self.main_window()
 
@@ -68,6 +97,7 @@ class Window(QMainWindow):
         self.generate_table()
 
         self.btn_start.clicked.connect(self.step_indexer)
+        self.btn_add.clicked.connect(self.add_step)
 
         # Widget display
         self.h0_layout.addWidget(self.protocol_table)
@@ -113,9 +143,15 @@ class Window(QMainWindow):
         self.step_index = 0
         self.progress.setValue(self.step_index)
 
+    def add_step(self):
+        self.instructions["command"].append(self.txt_command_name.text())
+        self.instructions["type"].append(str(self.command.currentText()))
+        self.instructions["time"].append(self.txt_command_duration.text())
+
+        print(self.instructions)
 
     # IMPORTANT: When serial port opened, Arduino automatically resets
-    def connect(self):
+    def connect(self, motherboard):
         if platform.system() == "Windows":
             ports_available = list(list_ports.comports())
             for com in ports_available:
@@ -169,30 +205,6 @@ class Window(QMainWindow):
         print("Setup: " + setup_commands)
         return setup_commands
 
-    def transmit_data(reader):
-        fieldnames = ['time', 'sen1Ch1', 'sen1Ch2', 'sen1Ch3', 'sen1Ch4', 'sen1Ch5',
-                      'sen2Ch1', 'sen2Ch2', 'sen2Ch3', 'sen2Ch4', 'sen2Ch5', 'cnt1', 'cnt2']
-        with open('data.csv', 'w', newline='') as csv_file:
-            csv_writer = csv.writer(csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-            csv_writer.writerow(fieldnames)
-
-        while True:
-            with open('data.csv', 'a', newline='') as csv_file:
-                # csv_writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-                csv_writer = csv.writer(csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-                time_start = time.time()
-                transmission = reader.readline()[0:-2].decode('utf-8')
-                print(transmission)
-                data = transmission.split(',')
-                # csv_writer.writerow([data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
-                #                      data[8], data[9], data[10], data[11]])
-                # print(time.time() - time_start)
-                # time.sleep(1)
-
-                if not transmission:
-                    print("Finished")
-                    break
-
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
@@ -201,7 +213,6 @@ if __name__ == '__main__':
     mw = qtmodern.windows.ModernWindow(window)
     mw.show()
     sys.exit(app.exec_())
-
 
 # # Simple PyQT serial terminal v0.09 from iosoft.blog
 #
