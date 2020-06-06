@@ -60,8 +60,10 @@ class Window(QMainWindow):
         self.btn_connect = QPushButton("Connect")
         self.btn_start = QPushButton("Start")
         self.btn_pause = QPushButton("Pause")
-        self.btn_stop = QPushButton("Stop")
+        self.btn_stop = QPushButton("EOS")
         self.btn_send = QPushButton("Send")
+
+        self.btn_stop.setStyleSheet("background-color: #DD1D1D")
 
         self.progress = QProgressBar()
         self.step_index = 0
@@ -84,7 +86,8 @@ class Window(QMainWindow):
         self.btn_add.clicked.connect(self.add_step)
         self.btn_connect.clicked.connect(self.connect)
         self.btn_start.clicked.connect(self.step_indexer)
-        self.btn_send.clicked.connect(self.transmit)
+        self.btn_stop.clicked.connect(self.em_stop)
+        self.btn_send.clicked.connect(self.transmit_cmd_line)
 
         # Widget display
         self.h0_layout.addWidget(self.protocol_table)
@@ -124,13 +127,29 @@ class Window(QMainWindow):
 
     def generate_table(self):
         self.protocol_table.setSelectionBehavior(QTableView.SelectRows)
-        # self.protocol_table.setRowCount()
+        self.protocol_table.setRowCount(len(self.instructions["command"]))
         self.protocol_table.setColumnCount(3)
         self.protocol_table.setHorizontalHeaderLabels(["Command Name", "Command Type", "Delay Time"])
         header = self.protocol_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Stretch)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
         header.setSectionResizeMode(2, QHeaderView.Stretch)
+
+        for row in range(len(self.instructions["command"])):
+            self.protocol_table.setItem(row, 0, QTableWidgetItem(self.instructions["command"][row]))
+            self.protocol_table.setItem(row, 1, QTableWidgetItem(self.instructions["type"][row]))
+            self.protocol_table.setItem(row, 2, QTableWidgetItem(self.instructions["time"][row]))
+
+        self.protocol_table.resizeRowsToContents()
+
+    def load_instructions(self):
+        try:
+            file_path = QFileDialog.getOpenFileName(self, 'Open file', os.getenv('HOME'))[0]
+            file = open(file_path, 'r+')  # Open with intention to read
+        except IndexError:
+            self.text_editor.append("Error: file may have incorrect format")
+        except NameError:
+            self.text_editor.append("Error: cannot load file")
 
     def step_indexer(self):
         while self.step_index < 101:
@@ -140,13 +159,20 @@ class Window(QMainWindow):
         self.step_index = 0
         self.progress.setValue(self.step_index)
 
+        # M31 reports print time
+
     def add_step(self):
-        self.instructions["command"].append(self.txt_command_name.text())
-        self.instructions["type"].append(str(self.command.currentText()))
-        self.instructions["time"].append(self.txt_command_duration.text())
+        command_name = self.txt_command_name.text()
+        command_type = str(self.command.currentText())
+        command_time = self.txt_command_duration.text()
+
+        self.instructions["command"].append(command_name)
+        self.instructions["type"].append(command_type)
+        self.instructions["time"].append(command_time)
 
         print(self.instructions)
-        self.text_editor.append("Example text")
+        self.text_editor.append(command_name + ", " + command_type + ", " + command_time)
+        self.generate_table()
 
     def connect(self):
         self.text_editor.append("Welcome")
@@ -185,7 +211,35 @@ class Window(QMainWindow):
         command = "M302 S0\r\n"
         self.motherboard.write(command.encode())
 
-    def transmit(self):
+    def initialize(self):
+        # Retrieve firmware info
+        command_info = "M115"
+        self.transmit(command_info)
+        self.receive()
+
+        # TMC debugging
+        command_tmc_debug = "M122"
+        self.transmit(command_tmc_debug)
+        self.receive()
+
+        # Enable cold extrusion
+        command_cold_extrusion = "M302 S0"
+        self.transmit(command_cold_extrusion)
+        self.receive()
+
+        # Home all motors
+        command_home = "G28"
+        self.transmit(command_home)
+        self.receive()
+
+        # M106 turns on fan and sets speed; M107 turns fan off
+
+    def transmit(self, command):
+        command = command + "\r\n"
+        self.motherboard.write(command.encode())
+        time.sleep(1)
+
+    def transmit_cmd_line(self):
         command = self.txt_command_line.text()
         command = command + "\r\n"
         self.motherboard.write(command.encode())
@@ -198,6 +252,12 @@ class Window(QMainWindow):
         transmission = self.motherboard.readline()[0:-1].decode('utf-8', 'ignore')
 
         self.text_editor.append(transmission)
+
+    def em_stop(self):
+        # M112 EMERGENCY STOP
+        command_em_stop = "M112"
+        self.transmit(command_em_stop)
+        self.receive()
 
 
 if __name__ == '__main__':
