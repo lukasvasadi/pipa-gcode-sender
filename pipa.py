@@ -1,7 +1,7 @@
 import os
 import sys
 # from PyQt5.QtGui import *
-# from PyQt5.QtCore import *
+from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 import serial
 from serial.tools import list_ports
@@ -88,6 +88,7 @@ class Window(QMainWindow):
         self.btn_start.clicked.connect(self.step_indexer)
         self.btn_stop.clicked.connect(self.em_stop)
         self.btn_send.clicked.connect(self.transmit_cmd_line)
+        # self.txt_command_line.keyPressEvent = self.keyPressEvent
 
         # Widget display
         self.h0_layout.addWidget(self.protocol_table)
@@ -176,50 +177,49 @@ class Window(QMainWindow):
 
     def connect(self):
         self.text_editor.append("Welcome")
-        if platform.system() == "Windows":
-            ports_available = list(list_ports.comports())
-            for com in ports_available:
-                if "USB Serial Device" in com.description:
-                    port = com[0]
-                    self.text_editor.append("Port: " + port)
-                    try:
-                        self.motherboard = serial.Serial(port=port, baudrate=250000, timeout=1)
-                        # Toggle DTR to reset microcontroller — important for cleaning serial buffer
-                        self.motherboard.setDTR(False)
-                        time.sleep(0.1)
-                        # Wipe serial buffer
-                        self.motherboard.reset_input_buffer()
-                        self.motherboard.reset_output_buffer()
-                        self.motherboard.setDTR(True)
-                        break
-                    except WindowsError:
-                        print("Error: Problem with serial connection")
-        else:
-            self.motherboard = serial.Serial(port="com31", baudrate=250000, timeout=1)
-            # Toggle DTR to reset microcontroller — important for cleaning serial buffer
-            self.motherboard.setDTR(False)
-            time.sleep(0.1)
-            # Wipe serial buffer
-            self.motherboard.reset_input_buffer()
-            # micro_controller.reset_output_buffer()
-            self.motherboard.setDTR(True)
+        try:
+            if platform.system() == "Windows":
+                ports_available = list(list_ports.comports())
+                for com in ports_available:
+                    if "USB Serial Device" in com.description:
+                        port = com[0]
+                        self.text_editor.append("Port: " + port)
+                        try:
+                            self.motherboard = serial.Serial(port=port, baudrate=250000, timeout=1)
+                            # Toggle DTR to reset microcontroller — important for cleaning serial buffer
+                            self.motherboard.setDTR(False)
+                            time.sleep(0.1)
+                            # Wipe serial buffer
+                            self.motherboard.reset_input_buffer()
+                            self.motherboard.reset_output_buffer()
+                            self.motherboard.setDTR(True)
+                            break
+                        except WindowsError:
+                            print("Error: Problem with serial connection")
+            else:
+                self.motherboard = serial.Serial(port="com31", baudrate=250000, timeout=1)
+                # Toggle DTR to reset microcontroller — important for cleaning serial buffer
+                self.motherboard.setDTR(False)
+                time.sleep(0.1)
+                # Wipe serial buffer
+                self.motherboard.reset_input_buffer()
+                # micro_controller.reset_output_buffer()
+                self.motherboard.setDTR(True)
 
-        time.sleep(1)
-        # self.receive()
-
-        # Send command to enable cold extrusion
-        command = "M302 S0\r\n"
-        self.motherboard.write(command.encode())
+            # time.sleep(1)
+            self.initialize()
+        except AttributeError:
+            self.text_editor.append("Error: motherboard not detected")
 
     def initialize(self):
         # Retrieve firmware info
-        command_info = "M115"
-        self.transmit(command_info)
-        self.receive()
+        # command_info = "M115"
+        # self.transmit(command_info)
+        # self.receive()
 
-        # TMC debugging
-        command_tmc_debug = "M122"
-        self.transmit(command_tmc_debug)
+        # Set units to mm
+        command_units_mm = "G21"
+        self.transmit(command_units_mm)
         self.receive()
 
         # Enable cold extrusion
@@ -227,37 +227,61 @@ class Window(QMainWindow):
         self.transmit(command_cold_extrusion)
         self.receive()
 
+        # TMC debugging
+        # command_tmc_debug = "M122"
+        # self.transmit(command_tmc_debug)
+        # self.receive()
+
         # Home all motors
-        command_home = "G28"
-        self.transmit(command_home)
-        self.receive()
+        # command_home = "G28"
+        # self.transmit(command_home)
+        # self.receive()
 
         # M106 turns on fan and sets speed; M107 turns fan off
+        # M502 performs factory reset of all configurable settings (EEPROM)
+        # M500 saves new settings
+        # M92 set axis steps per unit
+        # M119 endstop states
+        # M122 TMC debugging
 
     def transmit(self, command):
-        command = command + "\r\n"
+        command = command.upper() + "\r\n"
+        # self.text_editor.append(command[0:-2])
         self.motherboard.write(command.encode())
+        # Wait for motherboard to receive transmission
         time.sleep(1)
 
     def transmit_cmd_line(self):
         command = self.txt_command_line.text()
-        command = command + "\r\n"
+        command = command.upper() + "\r\n"
         self.motherboard.write(command.encode())
+        self.text_editor.append(command[0:-2])
         time.sleep(1)
         self.receive()
         self.txt_command_line.setText("G1 E0")
         # self.motherboard.close()
 
     def receive(self):
-        transmission = self.motherboard.readline()[0:-1].decode('utf-8', 'ignore')
-
-        self.text_editor.append(transmission)
+        # Attempt to read all incoming messages from motherboard
+        while True:
+            transmission = self.motherboard.readline()[0:-1].decode('utf-8', 'ignore')
+            if transmission == "":
+                break
+            self.text_editor.append(transmission)
+            time.sleep(0.1)
 
     def em_stop(self):
         # M112 EMERGENCY STOP
         command_em_stop = "M112"
         self.transmit(command_em_stop)
         self.receive()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Q:
+            print("Pressed Q")
+        elif event.key() == Qt.Key_Enter:
+            print("Pressed Enter")
+        event.accept()
 
 
 if __name__ == '__main__':
