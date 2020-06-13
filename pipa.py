@@ -1,13 +1,12 @@
 import os
 import sys
-# from PyQt5.QtGui import *
-from PyQt5.QtCore import *
-from PyQt5.QtWidgets import *
-import serial
-from serial.tools import list_ports
 import platform
 import time
-
+import serial
+from serial.tools import list_ports
+from PyQt5.QtGui import *
+from PyQt5.QtCore import *
+from PyQt5.QtWidgets import *
 import qtmodern.styles
 import qtmodern.windows
 
@@ -15,6 +14,11 @@ import qtmodern.windows
 class Window(QMainWindow):
     """
     GUI for passing g-code commands to liquid handler.
+
+    Use the following helpful g-code commands upon startup:
+        M122 to see report on driver status.
+        M914 alone shows Stallguard sensitivity values (can also be used to override values).
+        M906 - Set or get motor current in milliamps using axis codes X, Y, Z, E. Report values if no axis codes given.
     """
 
     def __init__(self):
@@ -71,6 +75,7 @@ class Window(QMainWindow):
         self.text_editor = QTextEdit()
 
         self.instructions = {"command": [], "type": [], "time": []}
+        self.g_code_command_array = []
 
         # Execute main window
         self.main_window()
@@ -83,9 +88,9 @@ class Window(QMainWindow):
 
         self.generate_table()
 
-        self.btn_add.clicked.connect(self.add_step)
+        self.btn_add.clicked.connect(self.load_instructions)
         self.btn_connect.clicked.connect(self.connect)
-        self.btn_start.clicked.connect(self.step_indexer)
+        self.btn_start.clicked.connect(self.start)
         self.btn_stop.clicked.connect(self.em_stop)
         self.btn_send.clicked.connect(self.transmit_cmd_line)
         # self.txt_command_line.keyPressEvent = self.keyPressEvent
@@ -145,19 +150,24 @@ class Window(QMainWindow):
 
     def load_instructions(self):
         try:
+            # Re-initialize command array
+            self.g_code_command_array = []
             file_path = QFileDialog.getOpenFileName(self, 'Open file', os.getenv('HOME'))[0]
-            file = open(file_path, 'r+')  # Open with intention to read
+            with open(file_path, 'r') as file_g_code:  # Open with intention to read
+                for line in file_g_code:
+                    self.g_code_command_array.append(line)
+                    # print(line)
         except IndexError:
             self.text_editor.append("Error: file may have incorrect format")
         except NameError:
             self.text_editor.append("Error: cannot load file")
 
     def step_indexer(self):
-        while self.step_index < 101:
-            self.progress.setValue(self.step_index)
-            time.sleep(1)
-            self.step_index += 10
-        self.step_index = 0
+        # while self.step_index < 101:
+        #     self.progress.setValue(self.step_index)
+        #     time.sleep(1)
+        #     self.step_index += 10
+        # self.step_index = 0
         self.progress.setValue(self.step_index)
 
         # M31 reports print time
@@ -233,9 +243,9 @@ class Window(QMainWindow):
         # self.receive()
 
         # Home all motors
-        # command_home = "G28"
-        # self.transmit(command_home)
-        # self.receive()
+        command_home = "G28 X Y"
+        self.transmit(command_home)
+        self.receive()
 
         # M106 turns on fan and sets speed; M107 turns fan off
         # M502 performs factory reset of all configurable settings (EEPROM)
@@ -275,6 +285,15 @@ class Window(QMainWindow):
         command_em_stop = "M112"
         self.transmit(command_em_stop)
         self.receive()
+
+    def start(self):
+        while True:
+            for i in range(len(self.g_code_command_array)):
+                self.step_index = i
+                self.transmit(self.g_code_command_array[i])
+                self.receive()
+                self.step_indexer()
+
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Q:
