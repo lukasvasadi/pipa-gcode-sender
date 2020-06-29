@@ -76,6 +76,7 @@ class Window(QMainWindow):
 
         self.instructions = {"command": [], "type": [], "time": []}
         self.g_code_command_array = []
+        self.motherboard = ''
 
         # Execute main window
         self.main_window()
@@ -243,8 +244,16 @@ class Window(QMainWindow):
         # self.receive()
 
         # Home all motors
-        command_home = "G28 X Y"
-        self.transmit(command_home)
+        command_home_y = "G28 Y"
+        self.transmit(command_home_y)
+        self.receive()
+
+        command_home_x = "G28 X"
+        self.transmit(command_home_x)
+        self.receive()
+        
+        command_home_z = "G28 Z"
+        self.transmit(command_home_z)
         self.receive()
 
         # M106 turns on fan and sets speed; M107 turns fan off
